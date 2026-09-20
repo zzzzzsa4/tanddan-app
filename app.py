@@ -91,7 +91,7 @@ with tab1:
     content = st.text_area(
         "제공내역", placeholder="예: 3만원 식사권 또는 제품 협찬"
     )
-    status = st.selectbox("진행 상태", ["신청중", "선정됨"])
+    status = st.selectbox("진행 상태", ["선정됨", "신청됨"])
 
     submitted = st.form_submit_button("🦔 딴딴이 리스트에 추가하기")
 
