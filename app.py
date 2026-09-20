@@ -78,8 +78,18 @@ with tab1:
 
   with st.form("new_campaign_form", clear_on_submit=True):
     company = st.text_input("업체명", placeholder="예: 강남 고기집 / 역삼 식당")
+    # 주요 체험단 플랫폼 및 마지막 기타 체험단 포함
     platform = st.selectbox(
-        "플랫폼 선택", ["강남맛집", "디너의여왕", "뷰스타", "기타 체험단"]
+        "플랫폼 선택",
+        [
+            "레뷰",
+            "리뷰노트",
+            "강남맛집",
+            "디너의여왕",
+            "포블로그",
+            "놀러와체험단",
+            "기타 체험단",
+        ],
     )
 
     col1, col2 = st.columns(2)
@@ -91,7 +101,7 @@ with tab1:
     content = st.text_area(
         "제공내역", placeholder="예: 3만원 식사권 또는 제품 협찬"
     )
-    # 진행 상태를 신청중, 선정됨 2개로 간소화
+    # 진행 상태는 신청중, 선정됨 2개로 유지
     status = st.selectbox("진행 상태", ["신청중", "선정됨"])
 
     submitted = st.form_submit_button("🦔 딴딴이 리스트에 추가하기")
