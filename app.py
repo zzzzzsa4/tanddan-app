@@ -25,6 +25,9 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
+# 알림 상태 저장을 위한 세션 스테이트 초기화
+if "reg_status" not in st.session_state:
+    st.session_state.reg_status = None
 
 # SQLite 데이터베이스 연결 및 테이블 생성
 def init_db():
@@ -98,9 +101,8 @@ with tab1:
     if submitted:
       if not company:
         st.warning("업체명을 입력해주세요!")
-      elif visit_date > deadline:
-        st.error("⚠️ 주의: 방문 예정일이 리뷰 마감일보다 빠를 수 없습니다! 날짜를 다시 확인해주세요.")
       else:
+        # 1. 날짜 관계없이 무조건 DB에 먼저 저장합니다.
         c.execute(
             """
                     INSERT INTO blog_data (company, platform, visit_date, deadline, content, status)
@@ -116,16 +118,51 @@ with tab1:
             ),
         )
         conn.commit()
-        st.success("새로운 체험단이 안전하게 등록되었습니다!")
+        
+        # 2. 날짜 역전 여부를 확인해서 다음 화면에 띄울 알림 종류를 결정합니다.
+        if visit_date > deadline:
+            st.session_state.reg_status = "warning"
+        else:
+            st.session_state.reg_status = "success"
+            
         st.rerun()
+
+  # 폼 등록 직후 상태에 따라 알림 띄우기
+  if st.session_state.reg_status == "warning":
+      col_w1, col_w2 = st.columns([1, 4])
+      with col_w1:
+          try:
+              st.image("warning.jpg", width=80)
+          except Exception:
+              st.warning("⚠️")
+      with col_w2:
+          st.warning("🚨 주의: 방문 예정일이 리뷰 마감일보다 늦게 설정되었습니다!\n\n(일정은 정상적으로 등록 완료되었습니다.)")
+      st.session_state.reg_status = None
+      
+  elif st.session_state.reg_status == "success":
+      st.success("새로운 체험단이 안전하게 등록되었습니다!")
+      st.session_state.reg_status = None
 
   st.markdown("---")
   st.subheader("📋 현재 진행 중인 목록")
 
-  c.execute(
-      "SELECT id, company, platform, visit_date, deadline, content, status FROM"
-      " blog_data"
+  # --- 추가된 부분: 정렬 필터 기능 ---
+  sort_option = st.selectbox(
+      "보기 정렬 기준", 
+      ["최근 등록순", "방문 예정일 빠른순", "리뷰 마감일 빠른순"]
   )
+
+  # 선택한 기준에 따라 SQL 정렬(ORDER BY) 쿼리 변경
+  if sort_option == "방문 예정일 빠른순":
+      query = "SELECT id, company, platform, visit_date, deadline, content, status FROM blog_data ORDER BY visit_date ASC"
+  elif sort_option == "리뷰 마감일 빠른순":
+      query = "SELECT id, company, platform, visit_date, deadline, content, status FROM blog_data ORDER BY deadline ASC"
+  else:
+      query = "SELECT id, company, platform, visit_date, deadline, content, status FROM blog_data ORDER BY id DESC"
+
+  c.execute(query)
+  # -----------------------------------
+  
   rows = c.fetchall()
 
   if not rows:
@@ -162,7 +199,7 @@ with tab1:
 with tab2:
   c.execute(
       "SELECT id, company, platform, visit_date, deadline, content, status,"
-      " completed_date FROM completed_data"
+      " completed_date FROM completed_data ORDER BY completed_date DESC"
   )
   completed_rows = c.fetchall()
 
