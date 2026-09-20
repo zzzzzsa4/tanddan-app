@@ -1,10 +1,10 @@
 from datetime import datetime
 import os
+from PIL import Image
 import sqlite3
-import pandas as pd
 import streamlit as st
 
-# 페이지 기본 설정 (모바일 최적화 및 와이드 레이아웃)
+# 페이지 기본 설정
 st.set_page_config(
     page_title="딴딴이의 체험단 매니저",
     page_icon="🔥",
@@ -13,11 +13,10 @@ st.set_page_config(
 )
 
 
-# SQLite 데이터베이스 연결 및 테이블 생성 (각 사용자 폰 내부의 독립 저장소)
+# SQLite 데이터베이스 연결 및 테이블 생성
 def init_db():
   conn = sqlite3.connect("local_tanddan.db", check_same_thread=False)
   c = conn.cursor()
-  # 진행 중인 체험단 테이블
   c.execute("""
         CREATE TABLE IF NOT EXISTS blog_data (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -29,7 +28,6 @@ def init_db():
             status TEXT
         )
     """)
-  # 체험 완료 목록 테이블
   c.execute("""
         CREATE TABLE IF NOT EXISTS completed_data (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -47,87 +45,7 @@ def init_db():
 
 
 conn = init_db()
-
-# 기본 데이터프레임 구조 정의
-df_columns = ["업체명", "플랫폼", "방문 예정일", "리뷰 마감일", "제공내역", "진행 상태"]
-completed_columns = [
-    "업체명",
-    "플랫폼",
-    "방문 예정일",
-    "리뷰 마감일",
-    "제공내역",
-    "진행 상태",
-    "완료일",
-]
-
-
-# 데이터 로드 함수
-def load_data(table_name):
-  cols = (
-      completed_columns
-      if table_name == "completed_data"
-      else df_columns
-  )
-  query = f"SELECT company, platform, visit_date, deadline, content, status FROM {table_name}"
-  if table_name == "completed_data":
-    query = f"SELECT company, platform, visit_date, deadline, content, status, completed_date FROM {table_name}"
-
-  try:
-    df = pd.read_sql(query, conn)
-    if not df.empty:
-      df.columns = cols
-    else:
-      df = pd.DataFrame(columns=cols)
-  except Exception:
-    df = pd.DataFrame(columns=cols)
-  return df
-
-
-# 안전한 데이터 저장 함수 (테이블을 지우지 않고 데이터만 동기화)
-def save_data(df, table_name):
-  c = conn.cursor()
-  c.execute(f"DELETE FROM {table_name}")  # 기존 데이터만 깔끔하게 비우고
-  conn.commit()
-
-  if not df.empty:
-    # 컬럼 순서 매핑 후 삽입
-    for _, row in df.iterrows():
-      if table_name == "blog_data":
-        c.execute(
-            """
-                    INSERT INTO blog_data (company, platform, visit_date, deadline, content, status)
-                    VALUES (?, ?, ?, ?, ?, ?)
-                """,
-            (
-                row["업체명"],
-                row["플랫폼"],
-                row["방문 예정일"],
-                row["리뷰 마감일"],
-                row["제공내역"],
-                row["진행 상태"],
-            ),
-        )
-      else:
-        c.execute(
-            """
-                    INSERT INTO completed_data (company, platform, visit_date, deadline, content, status, completed_date)
-                    VALUES (?, ?, ?, ?, ?, ?, ?)
-                """,
-            (
-                row["업체명"],
-                row["플랫폼"],
-                row["방문 예정일"],
-                row["리뷰 마감일"],
-                row["제공내역"],
-                row["진행 상태"],
-                row["완료일"],
-            ),
-        )
-    conn.commit()
-
-
-current_df = load_data("blog_data")
-completed_df = load_data("completed_data")
+c = conn.cursor()
 
 # UI 디자인 영역
 try:
@@ -169,20 +87,21 @@ with tab1:
 
     if submitted:
       if company:
-        new_row = pd.DataFrame(
-            [[
+        c.execute(
+            """
+                    INSERT INTO blog_data (company, platform, visit_date, deadline, content, status)
+                    VALUES (?, ?, ?, ?, ?, ?)
+                """,
+            (
                 company,
                 platform,
                 visit_date.strftime("%Y-%m-%d"),
                 deadline.strftime("%Y-%m-%d"),
                 content,
                 status,
-            ]],
-            columns=df_columns,
+            ),
         )
-
-        current_df = pd.concat([current_df, new_row], ignore_index=True)
-        save_data(current_df, "blog_data")
+        conn.commit()
         st.success("새로운 체험단이 안전하게 등록되었습니다!")
         st.rerun()
       else:
@@ -191,61 +110,59 @@ with tab1:
   st.markdown("---")
   st.subheader("📋 현재 진행 중인 목록")
 
-  if current_df.empty:
+  c.execute("SELECT id, company, platform, visit_date, deadline, content, status FROM blog_data")
+  rows = c.fetchall()
+
+  if not rows:
     st.info("등록된 체험단이 없습니다. 새로운 체험단을 등록해 보세요!")
   else:
-    for idx, row in current_df.iterrows():
-      with st.expander(
-          f"📌 [{row['플랫폼']}] {row['업체명']} (상태: {row['진행 상태']})"
-      ):
-        st.write(f"**방문 예정일:** {row['방문 예정일']}")
-        st.write(f"**리뷰 마감일:** {row['리뷰 마감일']}")
-        st.write(f"**제공내역:** {row['제공내역']}")
-        st.write(f"**진행 상태:** {row['진행 상태']}")
+    for row in rows:
+      row_id, comp, plat, v_date, d_line, cont, stat = row
+      with st.expander(f"📌 [{plat}] {comp} (상태: {stat})"):
+        st.write(f"**방문 예정일:** {v_date}")
+        st.write(f"**리뷰 마감일:** {d_line}")
+        st.write(f"**제공내역:** {cont}")
+        st.write(f"**진행 상태:** {stat}")
 
         col_a, col_b = st.columns(2)
         with col_a:
-          if st.button("✅ 완료로 이동", key=f"complete_{idx}"):
-            completed_row = pd.DataFrame(
-                [[
-                    row["업체명"],
-                    row["플랫폼"],
-                    row["방문 예정일"],
-                    row["리뷰 마감일"],
-                    row["제공내역"],
-                    "작성완료",
-                    datetime.today().strftime("%Y-%m-%d"),
-                ]],
-                columns=completed_columns,
+          if st.button("✅ 완료로 이동", key=f"complete_{row_id}"):
+            today_str = datetime.today().strftime("%Y-%m-%d")
+            # 완료 테이블로 이동
+            c.execute(
+                """
+                        INSERT INTO completed_data (company, platform, visit_date, deadline, content, status, completed_date)
+                        VALUES (?, ?, ?, ?, ?, ?, ?)
+                    """,
+                (comp, plat, v_date, d_line, cont, "작성완료", today_str),
             )
-
-            completed_df = pd.concat(
-                [completed_df, completed_row], ignore_index=True
-            )
-            save_data(completed_df, "completed_data")
-
-            current_df = current_df.drop(idx).reset_index(drop=True)
-            save_data(current_df, "blog_data")
+            # 기존 목록에서 삭제
+            c.execute("DELETE FROM blog_data WHERE id = ?", (row_id,))
+            conn.commit()
             st.rerun()
         with col_b:
-          if st.button("🗑️ 삭제", key=f"delete_{idx}"):
-            current_df = current_df.drop(idx).reset_index(drop=True)
-            save_data(current_df, "blog_data")
+          if st.button("🗑️ 삭제", key=f"delete_{row_id}"):
+            c.execute("DELETE FROM blog_data WHERE id = ?", (row_id,))
+            conn.commit()
             st.rerun()
 
 with tab2:
   st.subheader("🏆 완료된 체험단 아카이브")
-  if completed_df.empty:
+  c.execute(
+      "SELECT id, company, platform, visit_date, deadline, content, status, completed_date FROM completed_data"
+  )
+  completed_rows = c.fetchall()
+
+  if not completed_rows:
     st.info("완료된 체험단 내역이 없습니다.")
   else:
-    for idx, row in completed_df.iterrows():
-      with st.expander(
-          f"✅ [{row['플랫폼']}] {row['업체명']} (완료일: {row.get('완료일', '정보 없음')})"
-      ):
-        st.write(f"**방문일:** {row['방문 예정일']}")
-        st.write(f"**마감일:** {row['리뷰 마감일']}")
-        st.write(f"**제공내역:** {row['제공내역']}")
-        if st.button("🗑️ 기록 삭제", key=f"del_comp_{idx}"):
-          completed_df = completed_df.drop(idx).reset_index(drop=True)
-          save_data(completed_df, "completed_data")
+    for row in completed_rows:
+      row_id, comp, plat, v_date, d_line, cont, stat, comp_date = row
+      with st.expander(f"✅ [{plat}] {comp} (완료일: {comp_date})"):
+        st.write(f"**방문일:** {v_date}")
+        st.write(f"**마감일:** {d_line}")
+        st.write(f"**제공내역:** {cont}")
+        if st.button("🗑️ 기록 삭제", key=f"del_comp_{row_id}"):
+          c.execute("DELETE FROM completed_data WHERE id = ?", (row_id,))
+          conn.commit()
           st.rerun()
