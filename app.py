@@ -12,8 +12,21 @@ st.set_page_config(
     initial_sidebar_state="collapsed",
 )
 
+# 모바일 화면 타이틀 줄바꿈 및 간격 최적화 CSS
+st.markdown(
+    """
+    <style>
+    h1 {
+        font-size: 1.8rem !important;
+        word-break: keep-all;
+    }
+    </style>
+""",
+    unsafe_allow_html=True,
+)
 
-# SQLite 데이터베이스 연결 및 테이블 생성 (새로운 버전의 깨끗한 DB 파일 사용)
+
+# SQLite 데이터베이스 연결 및 테이블 생성
 def init_db():
   conn = sqlite3.connect("tanddan_v2.db", check_same_thread=False)
   c = conn.cursor()
@@ -56,7 +69,6 @@ except Exception:
   pass
 
 st.title("🔥 딴딴이의 체험단 매니저")
-st.markdown("블로그 체험단 일정과 링크를 내 폰에서 완벽하게 한눈에!")
 
 # 탭 메뉴 구성
 tab1, tab2 = st.tabs(["🔥 진행 중인 체험단", "✅ 체험 완료 목록"])
@@ -79,9 +91,8 @@ with tab1:
     content = st.text_area(
         "제공내역", placeholder="예: 3만원 식사권 또는 제품 협찬"
     )
-    status = st.selectbox(
-        "진행 상태", ["신청중", "선정됨", "방문완료", "작성완료"]
-    )
+    # 진행 상태를 신청중, 선정됨 2개로 간소화
+    status = st.selectbox("진행 상태", ["신청중", "선정됨"])
 
     submitted = st.form_submit_button("🦔 딴딴이 리스트에 추가하기")
 
