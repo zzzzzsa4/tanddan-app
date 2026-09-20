@@ -13,9 +13,9 @@ st.set_page_config(
 )
 
 
-# SQLite 데이터베이스 연결 및 테이블 생성
+# SQLite 데이터베이스 연결 및 테이블 생성 (새로운 버전의 깨끗한 DB 파일 사용)
 def init_db():
-  conn = sqlite3.connect("local_tanddan.db", check_same_thread=False)
+  conn = sqlite3.connect("tanddan_v2.db", check_same_thread=False)
   c = conn.cursor()
   c.execute("""
         CREATE TABLE IF NOT EXISTS blog_data (
@@ -110,7 +110,10 @@ with tab1:
   st.markdown("---")
   st.subheader("📋 현재 진행 중인 목록")
 
-  c.execute("SELECT id, company, platform, visit_date, deadline, content, status FROM blog_data")
+  c.execute(
+      "SELECT id, company, platform, visit_date, deadline, content, status FROM"
+      " blog_data"
+  )
   rows = c.fetchall()
 
   if not rows:
@@ -128,7 +131,6 @@ with tab1:
         with col_a:
           if st.button("✅ 완료로 이동", key=f"complete_{row_id}"):
             today_str = datetime.today().strftime("%Y-%m-%d")
-            # 완료 테이블로 이동
             c.execute(
                 """
                         INSERT INTO completed_data (company, platform, visit_date, deadline, content, status, completed_date)
@@ -136,7 +138,6 @@ with tab1:
                     """,
                 (comp, plat, v_date, d_line, cont, "작성완료", today_str),
             )
-            # 기존 목록에서 삭제
             c.execute("DELETE FROM blog_data WHERE id = ?", (row_id,))
             conn.commit()
             st.rerun()
@@ -149,7 +150,8 @@ with tab1:
 with tab2:
   st.subheader("🏆 완료된 체험단 아카이브")
   c.execute(
-      "SELECT id, company, platform, visit_date, deadline, content, status, completed_date FROM completed_data"
+      "SELECT id, company, platform, visit_date, deadline, content, status,"
+      " completed_date FROM completed_data"
   )
   completed_rows = c.fetchall()
 
