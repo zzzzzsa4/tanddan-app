@@ -132,7 +132,7 @@ with tab1:
       col_w1, col_w2 = st.columns([1, 4])
       with col_w1:
           try:
-              st.image("warning.jpg", width=80)
+              st.image("warning.png", width=80)
           except Exception:
               st.warning("⚠️")
       with col_w2:
