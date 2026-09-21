@@ -82,7 +82,7 @@ with tab1:
   with st.form("new_campaign_form", clear_on_submit=True):
     company = st.text_input("업체명", placeholder="예: 강남 고기집 / 역삼 식당")
     platform = st.selectbox(
-        "플랫폼 선택", ["강남맛집", "디너의여왕", "뷰스타", "기타 체험단"]
+        "플랫폼 선택", ["강남맛집", "리뷰노트", "기타 체험단"]
     )
 
     col1, col2 = st.columns(2)
