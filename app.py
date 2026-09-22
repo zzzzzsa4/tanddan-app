@@ -3,10 +3,12 @@ import os
 from PIL import Image
 import sqlite3
 import streamlit as st
+import base64
+import requests
 
 # 페이지 기본 설정
 st.set_page_config(
-    page_title="딴딴이의 체험단 매니저",
+    page_title="딴딴이의 체험단",
     page_icon="🔥",
     layout="centered",
     initial_sidebar_state="collapsed",
@@ -29,11 +31,74 @@ st.markdown(
 if "reg_status" not in st.session_state:
     st.session_state.reg_status = None
 
-# SQLite 데이터베이스 연결 및 테이블 생성
-def init_db():
-  conn = sqlite3.connect("tanddan_v2.db", check_same_thread=False)
-  c = conn.cursor()
-  c.execute("""
+# ==========================================
+# 🛡️ GitHub 자동 백업 함수
+# ==========================================
+def backup_to_github():
+    try:
+        # 스트림릿 시크릿에 설정된 토큰과 레포지토리 정보 가져오기
+        if "GITHUB_TOKEN" not in st.secrets or "GITHUB_REPO" not in st.secrets:
+            return  # 설정이 안 되어 있으면 백업 스킵 (로컬 테스트용)
+
+        token = st.secrets["GITHUB_TOKEN"]
+        repo = st.secrets["GITHUB_REPO"]
+        file_path = "tanddan_v2.db"
+
+        if not os.path.exists(file_path):
+            return
+
+        with open(file_path, "rb") as f:
+            content_bytes = f.read()
+        content_encoded = base64.b64encode(content_bytes).decode("utf-8")
+
+        api_url = f"https://api.github.com/repos/{repo}/contents/{file_path}"
+        headers = {
+            "Authorization": f"Bearer {token}",
+            "Accept": "application/vnd.github+json"
+        }
+
+        # 기존 파일의 SHA 값 가져오기 (GitHub API 업데이트 필수 조건)
+        sha = None
+        res = requests.get(api_url, headers=headers)
+        if res.status_code == 200:
+            sha = res.json().get("sha")
+
+        # GitHub에 업로드(커밋) 요청
+        data = {
+            "message": "Auto-backup database from Streamlit",
+            "content": content_encoded,
+        }
+        if sha:
+            data["sha"] = sha
+
+        requests.put(api_url, headers=headers, json=data)
+    except Exception as e:
+        print(f"Backup failed: {e}")
+
+# 앱 시작 시 GitHub 최신 DB 파일이 있다면 다운로드해서 싱크 맞추기 (선택사항)
+@st.cache_resource
+def init_db_with_sync():
+    try:
+        if "GITHUB_TOKEN" in st.secrets and "GITHUB_REPO" in st.secrets:
+            token = st.secrets["GITHUB_TOKEN"]
+            repo = st.secrets["GITHUB_REPO"]
+            file_path = "tanddan_v2.db"
+            api_url = f"https://api.github.com/repos/{repo}/contents/{file_path}"
+            headers = {"Authorization": f"Bearer {token}"}
+            res = requests.get(api_url, headers=headers)
+            if res.status_code == 200:
+                download_url = res.json().get("download_url")
+                if download_url:
+                    db_res = requests.get(download_url)
+                    if db_res.status_code == 200:
+                        with open(file_path, "wb") as f:
+                            f.write(db_res.content)
+    except Exception:
+        pass
+
+    conn = sqlite3.connect("tanddan_v2.db", check_same_thread=False)
+    c = conn.cursor()
+    c.execute("""
         CREATE TABLE IF NOT EXISTS blog_data (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             company TEXT,
@@ -44,7 +109,7 @@ def init_db():
             status TEXT
         )
     """)
-  c.execute("""
+    c.execute("""
         CREATE TABLE IF NOT EXISTS completed_data (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             company TEXT,
@@ -56,11 +121,10 @@ def init_db():
             completed_date TEXT
         )
     """)
-  conn.commit()
-  return conn
+    conn.commit()
+    return conn
 
-
-conn = init_db()
+conn = init_db_with_sync()
 c = conn.cursor()
 
 # UI 디자인 영역
@@ -71,7 +135,7 @@ try:
 except Exception:
   pass
 
-st.title("🔥 딴딴이의 체험단 매니저")
+st.title("🔥 딴딴이의 체험단")
 
 # 탭 메뉴 구성
 tab1, tab2 = st.tabs(["🔥 진행 중인 체험단", "✅ 체험 완료 목록"])
@@ -102,7 +166,7 @@ with tab1:
       if not company:
         st.warning("업체명을 입력해주세요!")
       else:
-        # 1. 날짜 관계없이 무조건 DB에 먼저 저장합니다.
+        # 1. DB 저장
         c.execute(
             """
                     INSERT INTO blog_data (company, platform, visit_date, deadline, content, status)
@@ -119,7 +183,10 @@ with tab1:
         )
         conn.commit()
         
-        # 2. 날짜 역전 여부를 확인해서 다음 화면에 띄울 알림 종류를 결정합니다.
+        # 🛡️ 데이터 변경 즉시 GitHub 자동 백업 실행
+        backup_to_github()
+        
+        # 2. 날짜 역전 여부 확인
         if visit_date > deadline:
             st.session_state.reg_status = "warning"
         else:
@@ -132,7 +199,12 @@ with tab1:
       col_w1, col_w2 = st.columns([1, 4])
       with col_w1:
           try:
-              st.image("warning.png", width=80)
+              if os.path.exists("warning.jpg"):
+                  st.image("warning.jpg", width=80)
+              elif os.path.exists("warning.png"):
+                  st.image("warning.png", width=80)
+              else:
+                  st.warning("⚠️")
           except Exception:
               st.warning("⚠️")
       with col_w2:
@@ -146,13 +218,12 @@ with tab1:
   st.markdown("---")
   st.subheader("📋 현재 진행 중인 목록")
 
-  # --- 추가된 부분: 정렬 필터 기능 ---
+  # 정렬 필터 기능
   sort_option = st.selectbox(
       "보기 정렬 기준", 
       ["최근 등록순", "방문 예정일 빠른순", "리뷰 마감일 빠른순"]
   )
 
-  # 선택한 기준에 따라 SQL 정렬(ORDER BY) 쿼리 변경
   if sort_option == "방문 예정일 빠른순":
       query = "SELECT id, company, platform, visit_date, deadline, content, status FROM blog_data ORDER BY visit_date ASC"
   elif sort_option == "리뷰 마감일 빠른순":
@@ -161,8 +232,6 @@ with tab1:
       query = "SELECT id, company, platform, visit_date, deadline, content, status FROM blog_data ORDER BY id DESC"
 
   c.execute(query)
-  # -----------------------------------
-  
   rows = c.fetchall()
 
   if not rows:
@@ -189,11 +258,17 @@ with tab1:
             )
             c.execute("DELETE FROM blog_data WHERE id = ?", (row_id,))
             conn.commit()
+            
+            # 🛡️ 백업
+            backup_to_github()
             st.rerun()
         with col_b:
           if st.button("🗑️ 삭제", key=f"delete_{row_id}"):
             c.execute("DELETE FROM blog_data WHERE id = ?", (row_id,))
             conn.commit()
+            
+            # 🛡️ 백업
+            backup_to_github()
             st.rerun()
 
 with tab2:
@@ -215,4 +290,7 @@ with tab2:
         if st.button("🗑️ 기록 삭제", key=f"del_comp_{row_id}"):
           c.execute("DELETE FROM completed_data WHERE id = ?", (row_id,))
           conn.commit()
+          
+          # 🛡️ 백업
+          backup_to_github()
           st.rerun()
