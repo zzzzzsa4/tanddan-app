@@ -8,7 +8,7 @@ import requests
 
 # 페이지 기본 설정
 st.set_page_config(
-    page_title="딴딴이의 체험단",
+    page_title="딴딴이의 체험단 ",
     page_icon="🔥",
     layout="centered",
     initial_sidebar_state="collapsed",
@@ -31,14 +31,11 @@ st.markdown(
 if "reg_status" not in st.session_state:
     st.session_state.reg_status = None
 
-# ==========================================
 # 🛡️ GitHub 자동 백업 함수
-# ==========================================
 def backup_to_github():
     try:
-        # 스트림릿 시크릿에 설정된 토큰과 레포지토리 정보 가져오기
         if "GITHUB_TOKEN" not in st.secrets or "GITHUB_REPO" not in st.secrets:
-            return  # 설정이 안 되어 있으면 백업 스킵 (로컬 테스트용)
+            return
 
         token = st.secrets["GITHUB_TOKEN"]
         repo = st.secrets["GITHUB_REPO"]
@@ -57,13 +54,11 @@ def backup_to_github():
             "Accept": "application/vnd.github+json"
         }
 
-        # 기존 파일의 SHA 값 가져오기 (GitHub API 업데이트 필수 조건)
         sha = None
         res = requests.get(api_url, headers=headers)
         if res.status_code == 200:
             sha = res.json().get("sha")
 
-        # GitHub에 업로드(커밋) 요청
         data = {
             "message": "Auto-backup database from Streamlit",
             "content": content_encoded,
@@ -75,7 +70,7 @@ def backup_to_github():
     except Exception as e:
         print(f"Backup failed: {e}")
 
-# 앱 시작 시 GitHub 최신 DB 파일이 있다면 다운로드해서 싱크 맞추기 (선택사항)
+# 앱 시작 시 GitHub 최신 DB 파일 다운로드 및 동기화
 @st.cache_resource
 def init_db_with_sync():
     try:
@@ -135,10 +130,10 @@ try:
 except Exception:
   pass
 
-st.title("🔥 딴딴이의 체험단")
+st.title("🔥 딴딴이의 체험단 매니저")
 
-# 탭 메뉴 구성
-tab1, tab2 = st.tabs(["🔥 진행 중인 체험단", "✅ 체험 완료 목록"])
+# 🗂️ 3개의 탭 메뉴 구성
+tab1, tab2, tab3 = st.tabs(["📍 새로운 체험단 등록", "🔥 진행 중인 체험단", "✅ 체험 완료 목록"])
 
 with tab1:
   st.subheader("📍 새로운 체험단 등록")
@@ -166,7 +161,7 @@ with tab1:
       if not company:
         st.warning("업체명을 입력해주세요!")
       else:
-        # 1. DB 저장
+        # DB 저장
         c.execute(
             """
                     INSERT INTO blog_data (company, platform, visit_date, deadline, content, status)
@@ -183,10 +178,10 @@ with tab1:
         )
         conn.commit()
         
-        # 🛡️ 데이터 변경 즉시 GitHub 자동 백업 실행
+        # 🛡️ GitHub 자동 백업 실행
         backup_to_github()
         
-        # 2. 날짜 역전 여부 확인
+        # 날짜 역전 여부 확인
         if visit_date > deadline:
             st.session_state.reg_status = "warning"
         else:
@@ -215,7 +210,7 @@ with tab1:
       st.success("새로운 체험단이 안전하게 등록되었습니다!")
       st.session_state.reg_status = None
 
-  st.markdown("---")
+with tab2:
   st.subheader("📋 현재 진행 중인 목록")
 
   # 정렬 필터 기능
@@ -258,20 +253,18 @@ with tab1:
             )
             c.execute("DELETE FROM blog_data WHERE id = ?", (row_id,))
             conn.commit()
-            
-            # 🛡️ 백업
             backup_to_github()
             st.rerun()
         with col_b:
           if st.button("🗑️ 삭제", key=f"delete_{row_id}"):
             c.execute("DELETE FROM blog_data WHERE id = ?", (row_id,))
             conn.commit()
-            
-            # 🛡️ 백업
             backup_to_github()
             st.rerun()
 
-with tab2:
+with tab3:
+  st.subheader("✅ 체험 완료 목록")
+  
   c.execute(
       "SELECT id, company, platform, visit_date, deadline, content, status,"
       " completed_date FROM completed_data ORDER BY completed_date DESC"
@@ -290,7 +283,5 @@ with tab2:
         if st.button("🗑️ 기록 삭제", key=f"del_comp_{row_id}"):
           c.execute("DELETE FROM completed_data WHERE id = ?", (row_id,))
           conn.commit()
-          
-          # 🛡️ 백업
           backup_to_github()
           st.rerun()
