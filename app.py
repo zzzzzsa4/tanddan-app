@@ -8,7 +8,7 @@ import requests
 
 # 페이지 기본 설정
 st.set_page_config(
-    page_title="딴딴이의 체험단 ",
+    page_title="딴딴이의 체험단 매니저",
     page_icon="🔥",
     layout="centered",
     initial_sidebar_state="collapsed",
@@ -31,10 +31,13 @@ st.markdown(
 if "reg_status" not in st.session_state:
     st.session_state.reg_status = None
 
-# 🛡️ GitHub 자동 백업 함수
+# ==========================================
+# 🛡️ GitHub 자동 백업 함수 (에러 알림 포함)
+# ==========================================
 def backup_to_github():
     try:
         if "GITHUB_TOKEN" not in st.secrets or "GITHUB_REPO" not in st.secrets:
+            st.error("❌ [백업 실패] 스트림릿 Secrets 설정(토큰/저장소)이 누락되었습니다.")
             return
 
         token = st.secrets["GITHUB_TOKEN"]
@@ -66,13 +69,23 @@ def backup_to_github():
         if sha:
             data["sha"] = sha
 
-        requests.put(api_url, headers=headers, json=data)
+        put_res = requests.put(api_url, headers=headers, json=data)
+        
+        # 🚨 업로드 성공/실패 여부를 화면에 출력
+        if put_res.status_code in [200, 201]:
+            st.toast("✅ 깃허브 백업 완료!", icon="☁️")
+        else:
+            error_msg = put_res.json().get('message', '알 수 없는 오류')
+            st.error(f"❌ 깃허브 백업 에러: {error_msg}")
+            
     except Exception as e:
-        print(f"Backup failed: {e}")
+        st.error(f"❌ 깃허브 통신 중 오류 발생: {e}")
 
-# 앱 시작 시 GitHub 최신 DB 파일 다운로드 및 동기화
+# ==========================================
+# 1. 앱 시작 시 GitHub에서 최신 DB 1번만 다운로드
+# ==========================================
 @st.cache_resource
-def init_db_with_sync():
+def download_db_from_github():
     try:
         if "GITHUB_TOKEN" in st.secrets and "GITHUB_REPO" in st.secrets:
             token = st.secrets["GITHUB_TOKEN"]
@@ -90,7 +103,15 @@ def init_db_with_sync():
                             f.write(db_res.content)
     except Exception:
         pass
+    return True
 
+# 최초 1회 다운로드 실행
+download_db_from_github()
+
+# ==========================================
+# 2. 매번 안전하게 새로운 DB 연결 생성 (Lock 에러 방지)
+# ==========================================
+def get_db_connection():
     conn = sqlite3.connect("tanddan_v2.db", check_same_thread=False)
     c = conn.cursor()
     c.execute("""
@@ -119,7 +140,7 @@ def init_db_with_sync():
     conn.commit()
     return conn
 
-conn = init_db_with_sync()
+conn = get_db_connection()
 c = conn.cursor()
 
 # UI 디자인 영역
